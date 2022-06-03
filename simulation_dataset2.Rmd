@@ -1,0 +1,123 @@
+---
+title: "simulation2"
+output: html_document
+date: '2022-05-18'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(car)
+library(MASS)
+library(lmtest)
+library(tseries)
+library(ggfortify)
+library(fastDummies)
+library(data.table)
+library(faux)
+```
+
+
+
+## Including Plots
+
+sex, race,  insurance,  Comorbidities 
+
+
+continous variable: Systolic_blood_pressure, Hematocrit, age,
+
+```{r pressure, echo=FALSE}
+
+
+
+generate_data <- function(number_of_cases, seed){
+  set.seed(seed)
+ 
+  ##Linear Regression
+  #Generate the independent variable and the error
+  number_of_cases = number_of_cases
+  
+  #systolic_blood_pressure = rnorm(number_of_cases, 154, 3.3)
+  #hematocrit = rnorm(number_of_cases, 34, 0.75)
+  #age = round(rnorm(number_of_cases, 60, 8))
+  
+  #construct correlated variables
+  cor_var <- rnorm_multi(n = number_of_cases, 
+                    mu = c(154, 34, 60),
+                    sd = c(3.3, 0.75, 8),
+                    r = c(0.2, 0.2, -0.1), #s&h, s&a, h&a 
+                    varnames = c("systolic_blood_pressure", "hematocrit", "age"),
+                    empirical = FALSE)
+  
+  #error, smallar error variance gives smaller mse
+  error=rnorm(number_of_cases, 0, 1)
+  
+  #categorical variables
+  sex <- sample(factor(c('male','female')), number_of_cases, replace=TRUE, prob=c(0.5, 0.5))
+  race <- sample(factor(c('Black','Hispanic','White','Asian', 'Indigenous')), number_of_cases, replace=TRUE, prob=c(0.29, .25, .23, .18, .5))
+  insurance <- sample(factor(c('not_insured', 'private_insured', 'public_insured')), number_of_cases, replace=TRUE, prob=c(.10, .30, .60))
+  comorbidities <- sample(factor(c('None', 'one', 'two', 'three_above')), replace=TRUE, number_of_cases, prob=c(.17, .41, .23, .19))
+  
+  continous_outcome <- data.frame(cor_var, error, sex, race, insurance, comorbidities)
+  
+  
+  continous_outcome_dummy <- dummy_cols(continous_outcome, select_columns = c('sex','race','insurance','comorbidities'), remove_selected_columns = TRUE, remove_first_dummy = TRUE)
+  
+  #Generate the dependent variable (b0=15) error is larger in cvxpy when intercept is larger
+  outcome= 15 + (2*continous_outcome_dummy$age)+(2*continous_outcome_dummy$hematocrit)+(-2*continous_outcome_dummy$systolic_blood_pressure) + (1*continous_outcome_dummy$sex_male) + (0*continous_outcome_dummy$race_White) + (4.5*continous_outcome_dummy$race_Black)  + (3*continous_outcome_dummy$race_Hispanic)  + (1*continous_outcome_dummy$race_Indigenous)  +  (-2*continous_outcome_dummy$insurance_private_insured) + (-1*continous_outcome_dummy$insurance_public_insured)  +  (-1*continous_outcome_dummy$comorbidities_one) + (-2*continous_outcome_dummy$comorbidities_two) + (-3*continous_outcome_dummy$comorbidities_three_above) + error
+  
+  #adding categorical var to dummy df
+  continous_outcome_clean<- data.frame(continous_outcome_dummy, outcome, race, insurance, sex, comorbidities)
+  
+  #add id column
+  continous_outcome_clean$level1_id <- 1:nrow(continous_outcome_clean)
+  
+ 
+
+  #write.csv(continous_outcome_clean, "fixed_effect_data_clean.csv", row.names = FALSE)
+  
+  
+  return (continous_outcome_clean)
+
+
+}
+
+simulations <- function(number_of_times){
+ 
+  startTime <- Sys.time()
+  seed_list = floor(runif(number_of_times, min=1, max=1000))
+  
+  for (seed in  seed_list){
+    continous_outcome_clean <- generate_data(10000, seed)
+  }
+  
+  endTime <- Sys.time()
+  print(endTime - startTime)
+  
+ 
+  
+}
+
+
+simulations(1000)
+
+
+
+
+continous_outcome_clean <- generate_data(10000, 123)
+
+#create the model
+m1=lm(outcome~systolic_blood_pressure +hematocrit + age+factor(sex) + factor(race) + factor(insurance) + factor(comorbidities), data =continous_outcome_clean)
+
+summary(m1)
+autoplot(m1)
+mean(m1$residuals^2)
+
+```
+
+
+
+
+
+
+
+
